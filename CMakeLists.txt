@@ -44,9 +44,13 @@ pico_set_program_version(memory-game "0.1")
 pico_enable_stdio_uart(memory-game 1)
 pico_enable_stdio_usb(memory-game 1)
 
+pico_generate_pio_header(memory-game ${CMAKE_CURRENT_LIST_DIR}/lib/interruptions_counter.pio)
+
 # Add the standard library to the build
 target_link_libraries(memory-game
-        pico_stdlib)
+        pico_stdlib
+        hardware_pio
+        )
 
 # Add the standard include files to the build
 target_include_directories(memory-game PRIVATE
