@@ -5,7 +5,12 @@
 #define NUM_PIXELS 25
 #define LED_MATRIX_PIN 7
 
+#define BUTTON_A_PIN 5 // Button A = 5
+#define BUTTON_B_PIN 6 // Button B = 6
+
 #define IS_RGBW false
+
+#define DEBOUNCE_US 200000  // 200ms debounce
 
 static volatile uint COUNTER = 0;
 
@@ -105,14 +110,27 @@ bool* draw_number(int number);
 void set_one_led(uint8_t r, uint8_t g, uint8_t b);
 static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b);
 static inline void put_pixel(uint32_t pixel_grb);
+void gpio_irq_handler(uint gpio, uint32_t events);
 
 int main()
 {
     stdio_init_all();
 
+    gpio_init(BUTTON_A_PIN);
+    gpio_set_dir(BUTTON_A_PIN, GPIO_IN); // Configura o pino como entrada
+    gpio_pull_up(BUTTON_A_PIN);          // Habilita o pull-up interno
+
+    gpio_init(BUTTON_B_PIN);
+    gpio_set_dir(BUTTON_B_PIN, GPIO_IN); // Configura o pino como entrada
+    gpio_pull_up(BUTTON_B_PIN);          // Habilita o pull-up interno
+
     PIO pio = pio0;
     int sm = 0;
     uint offset = pio_add_program(pio, &interruptions_counter_program);
+
+    // Configuração da interrupção com callback
+    gpio_set_irq_enabled_with_callback(BUTTON_A_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    gpio_set_irq_enabled(BUTTON_B_PIN, GPIO_IRQ_EDGE_FALL, true);
 
     interruptions_counter_program_init(pio, sm, offset, LED_MATRIX_PIN, 800000, IS_RGBW);
 
@@ -196,4 +214,24 @@ void set_one_led(uint8_t r, uint8_t g, uint8_t b)
             put_pixel(0);  // Desliga os LEDs com zero no buffer
         }
     }
+}
+
+// Função de interrupção com debouncing
+void gpio_irq_handler(uint gpio, uint32_t events)
+{
+    static absolute_time_t last_interrupt_time = {0};
+    absolute_time_t current_time = get_absolute_time();
+
+    if (absolute_time_diff_us(last_interrupt_time, current_time) < DEBOUNCE_US) {
+        return;  // Ignora interrupções muito próximas
+    }
+
+    if (gpio == BUTTON_B_PIN) {
+        COUNTER = (COUNTER + 1) % 10;
+    } else if (gpio == BUTTON_A_PIN) {
+        COUNTER = (COUNTER - 1 + 10) % 10;
+    }
+
+    set_one_led(led_r, led_g, led_b);
+    last_interrupt_time = current_time;
 }
