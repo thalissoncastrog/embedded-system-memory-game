@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "pico/stdlib.h"
 #include "interruptions_counter.pio.h"
 
@@ -8,9 +9,20 @@
 #define BUTTON_A_PIN 5 // Button A = 5
 #define BUTTON_B_PIN 6 // Button B = 6
 
+#define RED_LED_PIN 13 // LED RED = 13
+#define GREEN_LED_PIN 11 // LED GREEN = 11
+#define BLUE_LED_PIN 12 // LED BLUE = 12
+
+#define BUTTON_JOYSTICK_PIN 22 // Button Joystick = 22
+
 #define IS_RGBW false
 
 #define DEBOUNCE_US 200000  // 200ms debounce
+
+#define MAX_NUMBERS 999
+
+static int confirmed_numbers[MAX_NUMBERS];
+static int current_index = 0;
 
 static volatile uint COUNTER = 0;
 
@@ -112,6 +124,36 @@ static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b);
 static inline void put_pixel(uint32_t pixel_grb);
 void gpio_irq_handler(uint gpio, uint32_t events);
 
+static int sequence[MAX_NUMBERS];
+static int sequence_length = 1;
+static int current_step = 0;
+static int score = 0;
+
+int upper_bound = 9;
+int lower_bound = 0;
+
+void generate_sequence() {
+    for (int i = 0; i < sequence_length; i++) {
+        sequence[i] = rand() % (upper_bound - lower_bound + 1) + lower_bound;;
+    }
+}
+
+void show_sequence() {
+    printf("Sequence: ");
+    for (int i = 0; i < sequence_length; i++) {
+        printf("%d ", sequence[i]);
+    }
+    printf("\n");
+}
+
+void reset_game() {
+    sequence_length = 1;
+    current_step = 0;
+    score = 0;
+    generate_sequence();
+    show_sequence();
+}
+
 int main()
 {
     stdio_init_all();
@@ -124,6 +166,19 @@ int main()
     gpio_set_dir(BUTTON_B_PIN, GPIO_IN); // Configura o pino como entrada
     gpio_pull_up(BUTTON_B_PIN);          // Habilita o pull-up interno
 
+    gpio_init(RED_LED_PIN);
+    gpio_set_dir(RED_LED_PIN, GPIO_OUT); // Configura o pino como saída
+
+    gpio_init(GREEN_LED_PIN);
+    gpio_set_dir(GREEN_LED_PIN, GPIO_OUT); // Configura o pino como saída
+
+    gpio_init(BLUE_LED_PIN);
+    gpio_set_dir(BLUE_LED_PIN, GPIO_OUT); // Configura o pino como saída
+
+    gpio_init(BUTTON_JOYSTICK_PIN);
+    gpio_set_dir(BUTTON_JOYSTICK_PIN, GPIO_IN); // Configura o pino como entrada
+    gpio_pull_up(BUTTON_JOYSTICK_PIN);          // Habilita o pull-up interno
+
     PIO pio = pio0;
     int sm = 0;
     uint offset = pio_add_program(pio, &interruptions_counter_program);
@@ -131,14 +186,36 @@ int main()
     // Configuração da interrupção com callback
     gpio_set_irq_enabled_with_callback(BUTTON_A_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     gpio_set_irq_enabled(BUTTON_B_PIN, GPIO_IRQ_EDGE_FALL, true);
+    gpio_set_irq_enabled(BUTTON_JOYSTICK_PIN, GPIO_IRQ_EDGE_FALL, true);
 
     interruptions_counter_program_init(pio, sm, offset, LED_MATRIX_PIN, 800000, IS_RGBW);
 
     set_one_led(led_r, led_g, led_b);
 
+    generate_sequence();
+    show_sequence();
+
     while (true) {
-        printf("Hello, world!\n");
         sleep_ms(1000);
+
+        // if(sizeof(confirmed_numbers) > 0){
+        //     for(int i = 0; i < current_index; i++){
+        //         printf("Number %d: %d\n", i, confirmed_numbers[i]);
+        //     }
+        // }
+
+        // for(int i = 0; i < 5; i++){
+        //     int value = rand() % (upper_bound - lower_bound + 1) + lower_bound;
+            
+        //     if(i == 4){
+        //         printf("%d\n", value);
+        //     }else{
+        //         printf("%d, ", value);
+        //     }
+        // }
+
+        // printf("--------------------------------------------------------------\n");
+        
     }
 }
 
@@ -230,6 +307,37 @@ void gpio_irq_handler(uint gpio, uint32_t events)
         COUNTER = (COUNTER + 1) % 10;
     } else if (gpio == BUTTON_A_PIN) {
         COUNTER = (COUNTER - 1 + 10) % 10;
+    }else if (gpio == BUTTON_JOYSTICK_PIN) {
+        // if(current_index < MAX_NUMBERS){
+        //     confirmed_numbers[current_index] = COUNTER;
+        //     current_index++;
+        //     printf("Number %d confirmed\n", confirmed_numbers[current_index-1]);
+        // }
+
+        if(COUNTER == sequence[current_step]){
+            current_step++;
+
+            gpio_put(RED_LED_PIN, 0);
+            gpio_put(GREEN_LED_PIN, 1);
+            gpio_put(BLUE_LED_PIN, 0);
+            
+            if(current_step == sequence_length){
+                score++;
+                sequence_length++;
+                current_step = 0;
+                generate_sequence();
+                show_sequence();
+            }
+        }else{
+
+            gpio_put(RED_LED_PIN, 1);
+            gpio_put(GREEN_LED_PIN, 0);
+            gpio_put(BLUE_LED_PIN, 0);
+
+            printf("Game Over!\nScore: %d\n", score);
+            reset_game();
+        }
+
     }
 
     set_one_led(led_r, led_g, led_b);
