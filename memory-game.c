@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "pico/stdlib.h"
+#include "hardware/pwm.h"
 #include "interruptions_counter.pio.h"
 
 #define NUM_PIXELS 25
@@ -124,6 +125,12 @@ static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b);
 static inline void put_pixel(uint32_t pixel_grb);
 void gpio_irq_handler(uint gpio, uint32_t events);
 
+void init_pwm(uint pin);
+void set_pwm_duty_cycle(uint pin, uint16_t duty_cycle);
+
+void correct_answer();
+void wrong_answer();
+
 static int sequence[MAX_NUMBERS];
 static int sequence_length = 1;
 static int current_step = 0;
@@ -179,6 +186,11 @@ int main()
     gpio_set_dir(BUTTON_JOYSTICK_PIN, GPIO_IN); // Configura o pino como entrada
     gpio_pull_up(BUTTON_JOYSTICK_PIN);          // Habilita o pull-up interno
 
+    // Inicializa PWM para os LEDs RGB
+    init_pwm(RED_LED_PIN);
+    init_pwm(GREEN_LED_PIN);
+    init_pwm(BLUE_LED_PIN);
+
     PIO pio = pio0;
     int sm = 0;
     uint offset = pio_add_program(pio, &interruptions_counter_program);
@@ -215,8 +227,19 @@ int main()
         // }
 
         // printf("--------------------------------------------------------------\n");
-        
     }
+}
+
+void set_pwm_duty_cycle(uint pin, uint16_t duty_cycle){
+    pwm_set_gpio_level(pin, duty_cycle);
+}
+
+void init_pwm(uint pin){
+    gpio_set_function(pin, GPIO_FUNC_PWM);
+    uint slice_num = pwm_gpio_to_slice_num(pin);
+    pwm_set_wrap(slice_num, 255);
+    pwm_set_gpio_level(pin, 0);
+    pwm_set_enabled(slice_num, true);
 }
 
 bool* draw_number(int number)
@@ -293,6 +316,19 @@ void set_one_led(uint8_t r, uint8_t g, uint8_t b)
     }
 }
 
+// Variáveis globais para controlar o estado dos LEDs e o temporizador
+volatile bool led_on = false;
+volatile alarm_id_t led_alarm_id = -1;
+
+// Função de callback do temporizador para desligar os LEDs
+int64_t led_off_callback(alarm_id_t id, void *user_data) {
+    set_pwm_duty_cycle(RED_LED_PIN, 0);
+    set_pwm_duty_cycle(GREEN_LED_PIN, 0);
+    set_pwm_duty_cycle(BLUE_LED_PIN, 0);
+    led_on = false;
+    return 0;
+}
+
 // Função de interrupção com debouncing
 void gpio_irq_handler(uint gpio, uint32_t events)
 {
@@ -316,10 +352,6 @@ void gpio_irq_handler(uint gpio, uint32_t events)
 
         if(COUNTER == sequence[current_step]){
             current_step++;
-
-            gpio_put(RED_LED_PIN, 0);
-            gpio_put(GREEN_LED_PIN, 1);
-            gpio_put(BLUE_LED_PIN, 0);
             
             if(current_step == sequence_length){
                 score++;
@@ -328,18 +360,43 @@ void gpio_irq_handler(uint gpio, uint32_t events)
                 generate_sequence();
                 show_sequence();
             }
+
+            correct_answer();
+
         }else{
 
-            gpio_put(RED_LED_PIN, 1);
-            gpio_put(GREEN_LED_PIN, 0);
-            gpio_put(BLUE_LED_PIN, 0);
 
             printf("Game Over!\nScore: %d\n", score);
             reset_game();
+
+            wrong_answer();
+
         }
 
     }
 
     set_one_led(led_r, led_g, led_b);
     last_interrupt_time = current_time;
+}
+
+void correct_answer(){
+    set_pwm_duty_cycle(RED_LED_PIN, 0);
+    set_pwm_duty_cycle(GREEN_LED_PIN, 20);
+    set_pwm_duty_cycle(BLUE_LED_PIN, 0);
+
+    if (led_alarm_id != -1) {
+        cancel_alarm(led_alarm_id);
+    }
+    led_alarm_id = add_alarm_in_ms(500, led_off_callback, NULL, false);
+}
+
+void wrong_answer(){
+    set_pwm_duty_cycle(RED_LED_PIN, 20);
+    set_pwm_duty_cycle(GREEN_LED_PIN, 0);
+    set_pwm_duty_cycle(BLUE_LED_PIN, 0);
+
+    if (led_alarm_id != -1) {
+        cancel_alarm(led_alarm_id);
+    }
+    led_alarm_id = add_alarm_in_ms(500, led_off_callback, NULL, false);
 }
