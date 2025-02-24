@@ -2,7 +2,9 @@
 #include <stdlib.h>
 #include "pico/stdlib.h"
 #include "hardware/pwm.h"
-#include "interruptions_counter.pio.h"
+#include "hardware/i2c.h"
+#include "lib/interruptions_counter.pio.h"
+#include "lib/ssd1306_i2c.h"
 
 #define NUM_PIXELS 25
 #define LED_MATRIX_PIN 7
@@ -15,6 +17,12 @@
 #define BLUE_LED_PIN 12 // LED BLUE = 12
 
 #define BUTTON_JOYSTICK_PIN 22 // Button Joystick = 22
+
+#define I2C_PORT i2c1
+#define I2C_SDA 14
+#define I2C_SDL 15
+#define ADDRESS 0x3C
+
 
 #define IS_RGBW false
 
@@ -139,6 +147,8 @@ static int score = 0;
 int upper_bound = 9;
 int lower_bound = 0;
 
+ssd1306_t display;
+
 void generate_sequence() {
     for (int i = 0; i < sequence_length; i++) {
         sequence[i] = rand() % (upper_bound - lower_bound + 1) + lower_bound;;
@@ -151,6 +161,44 @@ void show_sequence() {
         printf("%d ", sequence[i]);
     }
     printf("\n");
+
+    // // Clear the display
+    // ssd1306_clear(&display);
+
+    // // Display the sequence on the OLED
+    // char buffer[32];
+    // snprintf(buffer, sizeof(buffer), "Sequence: ");
+    // ssd1306_draw_string(&display, 0, 0, 1, buffer);
+
+    // for (int i = 0; i < sequence_length; i++) {
+    //     snprintf(buffer, sizeof(buffer), "%d ", sequence[i]);
+    //     ssd1306_draw_string(&display, 0, (i + 1) * 10, 1, buffer);
+    // }
+
+    // ssd1306_show(&display);
+    bool color = true;
+    color = !color;
+
+    ssd1306_fill(&display, !color); // Limpa o display
+    ssd1306_rect(&display, 3, 3, 122, 58, color, !color); // Desenha um retângulo
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "Sequence: ");
+    ssd1306_draw_string(&display, buffer, 8, 10);
+
+    for (int i = 0; i < sequence_length; i++) {
+        snprintf(buffer, sizeof(buffer), "%d ", sequence[i]);
+
+        ssd1306_draw_string(&display, buffer, (i + 1) * 10, 30); // Desenha uma string
+
+        if(sequence_length >= 11){
+            ssd1306_draw_string(&display, buffer, (i + 1) * 10, 40); // Desenha uma string
+        }
+    }
+
+    // // Atualiza o conteúdo do display com animações
+    // ssd1306_draw_string(&display, "Botao Errado", 8, 10); // Desenha uma string
+    // ssd1306_draw_string(&display, "Fim de jogo", 20, 30); // Desenha uma string
+    ssd1306_send_data(&display); // Atualiza o display
 }
 
 void reset_game() {
@@ -190,6 +238,21 @@ int main()
     init_pwm(RED_LED_PIN);
     init_pwm(GREEN_LED_PIN);
     init_pwm(BLUE_LED_PIN);
+
+    // I2C Initialisation. Using it at 400Khz.
+    i2c_init(I2C_PORT, 400 * 1000);
+
+    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C); // Set the GPIO pin function to I2C
+    gpio_set_function(I2C_SDL, GPIO_FUNC_I2C); // Set the GPIO pin function to I2C
+    gpio_pull_up(I2C_SDA); // Pull up the data line
+    gpio_pull_up(I2C_SDL); // Pull up the clock line
+    ssd1306_init(&display, WIDTH, HEIGHT, false, ADDRESS, I2C_PORT); // Inicializa o display
+    ssd1306_config(&display); // Configura o display
+    ssd1306_send_data(&display); // Envia os dados para o display
+
+    // Limpa o display. O display inicia com todos os pixels apagados.
+    ssd1306_fill(&display, false);
+    ssd1306_send_data(&display);
 
     PIO pio = pio0;
     int sm = 0;
