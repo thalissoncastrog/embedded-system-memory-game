@@ -33,9 +33,11 @@ project(memory-game C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
+file (GLOB LIBSOURCES "lib/*.c")
+
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(memory-game memory-game.c )
+add_executable(memory-game memory-game.c ${LIBSOURCES} ${ASSETSOURCERS})
 
 pico_set_program_name(memory-game "memory-game")
 pico_set_program_version(memory-game "0.1")
@@ -49,7 +51,6 @@ pico_generate_pio_header(memory-game ${CMAKE_CURRENT_LIST_DIR}/lib/interruptions
 # Add the standard library to the build
 target_link_libraries(memory-game
         pico_stdlib
-        hardware_pio
         )
 
 # Add the standard include files to the build
@@ -59,8 +60,10 @@ target_include_directories(memory-game PRIVATE
 
 # Add any user requested libraries
 target_link_libraries(memory-game 
-        
-        )
+    hardware_i2c
+    hardware_pio
+    hardware_pwm
+    )
 
 pico_add_extra_outputs(memory-game)
 

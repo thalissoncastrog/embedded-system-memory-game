@@ -162,20 +162,6 @@ void show_sequence() {
     }
     printf("\n");
 
-    // // Clear the display
-    // ssd1306_clear(&display);
-
-    // // Display the sequence on the OLED
-    // char buffer[32];
-    // snprintf(buffer, sizeof(buffer), "Sequence: ");
-    // ssd1306_draw_string(&display, 0, 0, 1, buffer);
-
-    // for (int i = 0; i < sequence_length; i++) {
-    //     snprintf(buffer, sizeof(buffer), "%d ", sequence[i]);
-    //     ssd1306_draw_string(&display, 0, (i + 1) * 10, 1, buffer);
-    // }
-
-    // ssd1306_show(&display);
     bool color = true;
     color = !color;
 
