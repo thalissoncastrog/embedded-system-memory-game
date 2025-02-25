@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include "pico/stdlib.h"
 #include "hardware/pwm.h"
 #include "hardware/i2c.h"
@@ -139,6 +140,13 @@ void set_pwm_duty_cycle(uint pin, uint16_t duty_cycle);
 void correct_answer();
 void wrong_answer();
 
+void display_score();
+void wait_for_restart();
+
+int64_t clear_display_callback(alarm_id_t id, void *user_data);
+
+
+
 static int sequence[MAX_NUMBERS];
 static int sequence_length = 1;
 static int current_step = 0;
@@ -150,6 +158,7 @@ int lower_bound = 0;
 ssd1306_t display;
 
 void generate_sequence() {
+    srand(time(NULL));
     for (int i = 0; i < sequence_length; i++) {
         sequence[i] = rand() % (upper_bound - lower_bound + 1) + lower_bound;;
     }
@@ -169,30 +178,50 @@ void show_sequence() {
     ssd1306_rect(&display, 3, 3, 122, 58, color, !color); // Desenha um retângulo
     char buffer[32];
     snprintf(buffer, sizeof(buffer), "Sequence: ");
-    ssd1306_draw_string(&display, buffer, 8, 10);
+    ssd1306_draw_string(&display, buffer, 8, 5);
 
     for (int i = 0; i < sequence_length; i++) {
         snprintf(buffer, sizeof(buffer), "%d ", sequence[i]);
 
-        ssd1306_draw_string(&display, buffer, (i + 1) * 10, 30); // Desenha uma string
+        // ssd1306_draw_string(&display, buffer, (i + 1) * 10, 30); // Desenha uma string
 
-        if(sequence_length >= 11){
-            ssd1306_draw_string(&display, buffer, (i + 1) * 10, 40); // Desenha uma string
-        }
+        // if(sequence_length >= 11){
+        //     ssd1306_draw_string(&display, buffer, (i + 1) * 10, 40); // Desenha uma string
+        // }
+
+        // Calcula a posição x e y para exibir o número
+
+        int x = (i % 11) * 10 + 8;
+        int y = (i / 11) * 10 + 20;
+
+        ssd1306_draw_string(&display, buffer, x, y); // Desenha uma string
+
+
     }
 
     // // Atualiza o conteúdo do display com animações
     // ssd1306_draw_string(&display, "Botao Errado", 8, 10); // Desenha uma string
     // ssd1306_draw_string(&display, "Fim de jogo", 20, 30); // Desenha uma string
     ssd1306_send_data(&display); // Atualiza o display
+
+    add_alarm_in_ms(2000, clear_display_callback, NULL, false);
 }
 
-void reset_game() {
+// Função de callback do temporizador para apagar o display
+int64_t clear_display_callback(alarm_id_t id, void *user_data) {
+    ssd1306_fill(&display, 0); // Limpa o display
+    ssd1306_send_data(&display); // Atualiza o display
+    return 0;
+}
+
+int64_t reset_game() {
     sequence_length = 1;
     current_step = 0;
     score = 0;
     generate_sequence();
     show_sequence();
+
+    return 0;
 }
 
 int main()
@@ -416,9 +445,12 @@ void gpio_irq_handler(uint gpio, uint32_t events)
 
 
             printf("Game Over!\nScore: %d\n", score);
-            reset_game();
 
             wrong_answer();
+
+            display_score();
+
+            // wait_for_restart();
 
         }
 
@@ -448,4 +480,28 @@ void wrong_answer(){
         cancel_alarm(led_alarm_id);
     }
     led_alarm_id = add_alarm_in_ms(500, led_off_callback, NULL, false);
+}
+
+void display_score() {
+    char buffer[32];
+    ssd1306_fill(&display, 0); // Limpa o display
+    snprintf(buffer, sizeof(buffer), "Score: %d", score);
+    ssd1306_draw_string(&display, buffer, 10, 20); // Exibe a pontuação
+    ssd1306_send_data(&display); // Atualiza o display
+
+    if (led_alarm_id != -1) {
+        cancel_alarm(led_alarm_id);
+    }
+
+    led_alarm_id = add_alarm_in_ms(2000, reset_game, NULL, false);
+}
+
+void wait_for_restart() {
+    while (true) {
+        if (gpio_get(BUTTON_JOYSTICK_PIN) == 0) { // Verifica se o botão de joystick foi pressionado
+            reset_game();
+            break;
+        }
+        // sleep_ms(100); // Aguarda 100ms antes de verificar novamente
+    }
 }
